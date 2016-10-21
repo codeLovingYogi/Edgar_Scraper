@@ -62,12 +62,17 @@ class HoldingsScraper:
         """Open filing url, find and parse xml holdings data."""
         self.browser.get(url)
         soup = BeautifulSoup(self.browser.page_source, "html.parser")
-        xml_link = soup.find_all('a', text=re.compile("\informationtable.xml$"))
+        filing_date_loc = soup.find("div", text="Filing Date")
+        filing_date = filing_date_loc.findNext('div').text
+        period_of_report_loc = soup.find("div", text="Period of Report")
+        period_of_report = period_of_report_loc.findNext('div').text
+        sys.stdout.write('Getting data for %s\n' % str(period_of_report))
+        xml_link = soup.find_all('a', text=re.compile("\.txt$"))
         #xml_file = 'https://www.sec.gov' + xml_link[0].get('href', None)
         xml_file = 'https://www.sec.gov/Archives/edgar/data/1166559/000110465916139781/a16-16809_1informationtable.xml'
         self.browser.get(xml_file)
         soup = BeautifulSoup(self.browser.page_source, "xml")
-        self.browser.save_screenshot('search_results.png')
+
         holdings = soup.find_all('infoTable')
         data = []
         for i in range(len(holdings)):
@@ -78,12 +83,15 @@ class HoldingsScraper:
             d['value'] = holdings[i].find('value').text
             data.append(d)
         col_headers = list(d.keys())
-        self.save_holdings(col_headers, data)
+        self.save_holdings(filing_date, period_of_report, col_headers, data)
     
-    def save_holdings(self, headers, data):
+    def save_holdings(self, date, period, headers, data):
         """Write holdings data to tab-delimited file."""
-        with open('myholdings.txt', 'w', newline='') as f:
+        file_name = 'holdings' + str(date) + 'filing_date.txt'
+        with open(file_name, 'w', newline='') as f:
             writer = csv.writer(f, dialect='excel-tab')
+            #writer.writerow('Filing Date: ', date)
+            #writer.writerow('Period of Report: ', period)
             writer.writerow(headers)
             for row in data:
                 writer.writerow([row.get(k, 'n/a') for k in headers])
@@ -95,6 +103,7 @@ class HoldingsScraper:
         self.browser.quit()
 
 #ticker = input('Enter ticker: ')
+#'0000908551'
 ticker = '0001166559'
 while len(ticker) < 1:
     ticker = input('Please enter a ticker: ')
