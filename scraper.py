@@ -32,16 +32,18 @@ class HoldingsScraper:
         search = self.browser.find_element_by_name('CIK')       
         search.send_keys(self.ticker)
         search.send_keys(Keys.RETURN)
-        # wait for page to load search results
-        wait = WebDriverWait(self.browser, 20)
-        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".tableFile2")))
-        # filter search results by '13F' filings
-        search = self.browser.find_element_by_name('type')
-        filing_type = '13F'
-        search.send_keys(filing_type)
-        search.send_keys(Keys.RETURN)
-        time.sleep(5)
-        self.retrieve_filings()
+        try:
+            wait = WebDriverWait(self.browser, 20)
+            wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".tableFile2")))
+            # filter search results by '13F' filings
+            search = self.browser.find_element_by_name('type')
+            filing_type = '13F'
+            search.send_keys(filing_type)
+            search.send_keys(Keys.RETURN)
+            time.sleep(5)
+            self.retrieve_filings()
+        except:
+            sys.stdout.write('No results found for ticker: %s\n' % self.ticker)
     
     def retrieve_filings(self):
         """Retrieve filings for each 13F filing from search results."""
@@ -50,9 +52,11 @@ class HoldingsScraper:
         links = soup('a', id='documentsbutton')
         sys.stdout.write('13F filings found: %d\n' % len(links))
         domain = 'https://www.sec.gov'
+        # Loop through all filings found
         for link in links:
             url = domain + link.get('href', None)
             self.parse_filing(url)
+        # Below is for most recent filing only
         # url = domain + links[0].get('href', None)
         # self.parse_filing(url)
 
@@ -85,12 +89,18 @@ class HoldingsScraper:
             d['titleOfClass'] = holdings[i].find('titleOfClass').text
             d['cusip'] = holdings[i].find('cusip').text
             d['value'] = holdings[i].find('value').text
+            d['sshPrnamt'] = holdings[i].find('shrsOrPrnAmt').find('sshPrnamt').text
+            d['sshPrnamtType'] = holdings[i].find('shrsOrPrnAmt').find('sshPrnamtType').text
+            d['investmentDiscretion'] = holdings[i].find('investmentDiscretion').text
+            d['votingAuthoritySole'] = holdings[i].find('votingAuthority').find('Sole').text
+            d['votingAuthorityShared'] = holdings[i].find('votingAuthority').find('Shared').text
+            d['votingAuthorityNone'] = holdings[i].find('votingAuthority').find('None').text
             data.append(d)
         col_headers = list(d.keys())
         self.save_holdings(date, period, col_headers, data)
     
     def save_holdings(self, date, period, headers, data):
-        """Write holdings data to tab-delimited file."""
+        """Create and write holdings data to tab-delimited text file."""
         file_name = self.ticker + '_' + str(date) + '_filing_date.txt'
         with open(file_name, 'w', newline='') as f:
             writer = csv.writer(f, dialect='excel-tab')
@@ -104,17 +114,5 @@ class HoldingsScraper:
 
     def scrape(self):
         """Main method to start scraper and find SEC holdings data."""
-        results = self.find_filings()
+        self.find_filings()
         self.browser.quit()
-
-#ticker = input('Enter ticker: ')
-# Hershey Trust '0000908551'
-# Menlo Advisors '0001279708'
-# BlackRock '0001086364'
-# Bill Gates '0001166559'
-ticker = ''
-while len(ticker) < 1:
-    ticker = input('Please enter a ticker: ')
-sys.stdout.write('Scraping started at %s\n' % str(datetime.datetime.now()))
-holdings = HoldingsScraper(ticker)
-holdings.scrape()
