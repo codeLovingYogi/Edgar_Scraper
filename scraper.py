@@ -4,7 +4,8 @@ import datetime
 import re
 import sys
 import time
-import urllib.parse
+import urllib
+import urllib
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -61,7 +62,11 @@ class HoldingsScraper:
         # self.parse_filing(url)
 
     def parse_filing(self, url):
-        """Open filing url, find xml holdings data."""
+        """Examines each filing to determine how to parse holdings data.
+        
+        Opens filing url, get filing and report end dates, and determine parsing
+        of holdings by either XML or ASCII based on 2013 filing format change.
+        """
         self.browser.get(url)
         soup = BeautifulSoup(self.browser.page_source, "html.parser")
         filing_date_loc = soup.find("div", text="Filing Date")
@@ -69,15 +74,21 @@ class HoldingsScraper:
         period_of_report_loc = soup.find("div", text="Period of Report")
         period_of_report = period_of_report_loc.findNext('div').text
         #sys.stdout.write('Getting data for: %s\n' % str(period_of_report))
+        domain = 'https://www.sec.gov'
         try:
             xml_link = soup.find('td', text="2").findNext('a', text=re.compile("\.xml$"))
-            xml_file = 'https://www.sec.gov' + xml_link.get('href', None)
+            xml_file = domain + xml_link.get('href', None)
             sys.stdout.write('Getting holdings from: %s\n' % xml_file)
-            self.get_holdings(xml_file, filing_date, period_of_report)
+            self.get_holdings_post(xml_file, filing_date, period_of_report)
         except:
-            sys.stdout.write('No xml link found for filing date: %s\n' % str(filing_date))
+            #sys.stdout.write('No xml link found for filing date: %s\n' % str(filing_date))
+            submission = soup.find('td', text="Complete submission text file")
+            subm_link = submission.findNext('a', text=re.compile("\.txt$"))
+            txt_file = domain + subm_link.get('href', None)
+            sys.stdout.write('Getting holdings from (ascii): %s\n' % txt_file)
+            self.save_holdings_pre(txt_file, filing_date, period_of_report)
 
-    def get_holdings(self, xml_file, date, period):
+    def get_holdings_post(self, xml_file, date, period):
         """Get detail for each holding from xml file."""
         self.browser.get(xml_file)
         soup = BeautifulSoup(self.browser.page_source, "xml")
@@ -97,9 +108,28 @@ class HoldingsScraper:
             d['votingAuthorityNone'] = holdings[i].find('votingAuthority').find('None').text
             data.append(d)
         col_headers = list(d.keys())
-        self.save_holdings(date, period, col_headers, data)
+        self.save_holdings_post(date, period, col_headers, data)
+
+    def save_holdings_pre(self, txt_file, date, period):
+        #self.browser.get(file)
+        data = urllib.request.urlopen(txt_file)
+        parse = False
+        file_name = self.ticker + '_' + str(date) + '_filing_dateASCII.txt'
+        with open(file_name, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['Ticker: ' + self.ticker])
+            writer.writerow(['Filing Date: ' + str(date)])
+            writer.writerow(['Period of Report: ' + str(period)])
+            for line in data:
+                line = line.decode('UTF-8').strip()
+                if re.search('^<TABLE>$', line) or re.search('^<Table>$', line):
+                    parse = True
+                if re.search('^</TABLE>$', line) or re.search('^</Table>$', line):
+                    parse = False
+                if parse:
+                    writer.writerow([line])
     
-    def save_holdings(self, date, period, headers, data):
+    def save_holdings_post(self, date, period, headers, data):
         """Create and write holdings data to tab-delimited text file."""
         file_name = self.ticker + '_' + str(date) + '_filing_date.txt'
         with open(file_name, 'w', newline='') as f:
@@ -110,7 +140,6 @@ class HoldingsScraper:
             writer.writerow(headers)
             for row in data:
                 writer.writerow([row.get(k, 'n/a') for k in headers])
-        sys.stdout.write('Scraping complete, holdings data saved\n') 
 
     def scrape(self):
         """Main method to start scraper and find SEC holdings data."""
