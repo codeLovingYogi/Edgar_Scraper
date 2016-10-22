@@ -3,8 +3,9 @@ import xml.etree.ElementTree as ET
 import re
 import csv
 
-#url = 'https://www.sec.gov/Archives/edgar/data/908551/000090855109000003/0000908551-09-000003.txt'
-url = 'https://www.sec.gov/Archives/edgar/data/1166559/000104746911000932/0001047469-11-000932.txt'
+url = 'https://www.sec.gov/Archives/edgar/data/908551/000090855109000003/0000908551-09-000003.txt'
+#url = 'https://www.sec.gov/Archives/edgar/data/1166559/000104746911000932/0001047469-11-000932.txt'
+#url = 'https://www.sec.gov/Archives/edgar/data/1279708/000127970813000005/0001279708-13-000005.txt'
 data = urllib.request.urlopen(url)
 parse = False
 holdings = []
@@ -12,7 +13,7 @@ with open('holdingsFromXML.txt', 'w', newline='') as f:
 	writer = csv.writer(f)
 	for line in data:
 		line = line.decode('UTF-8').strip()
-		if re.search('^<TABLE>$', line) or re.search('^<Table>$', line):
+		if re.search('^<TABLE>', line) or re.search('^<Table>', line):
 			parse = True
 		if re.search('^</TABLE>$', line) or re.search('^</Table>$', line):
 			parse = False
