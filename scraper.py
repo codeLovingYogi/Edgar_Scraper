@@ -2,29 +2,35 @@
 
 """
 scraper.py contains the main functionality to find and scrape
-holdings data from 13F filings.
+holdings data from 13F filings on https://www.sec.gov.
 
-Start scraper by running 'main.py'
+See comments in main.py for instructions on how to run
+the scraper. 
 
-A txt file will be created for every 13F filing found for the
-ticker in the same directory as this program.
+A .txt file will be created for every 13F filing found for the
+ticker and saved in the same directory as this program.
 
-File naming convention: 
+All files are tab-delimited with below naming convention: 
 - for filings after change to XML required format:
 [ticker] + '_' + [filing date] + '_filing_date.txt'
-Created as tab-delimited file
 
 - for filings before change in 2013
 [ticker] + '_' + [filing date] + '_filing_dateASCII.txt'
-Currently fixed-width enabled, but there may be third party
-tools to make parsing of ASCII tables simple and enable the
-writing of parsed valued to tab-delimited files.
 
-One that seems promising is astropy.io.ascii
-(http://docs.astropy.org/en/stable/io/ascii/)
+Holdings retrieval for filings after SEC 2013 decision to 
+discontinue text-based ASCII format is done via parsing of 
+XML from .xml link. Data is written to tab-delimited file.
+
+Holdings retrieval for filings before SEC 2013 decision to 
+discontinue text-based ASCII format is done via parsing of 
+.txt link to look for table of holdings and saving to 
+temporary file. Temporary file is read again to parse and 
+split each line for final tab-delimited text file.
 """
+
 import csv
 import datetime
+import os
 import re
 import sys
 import time
@@ -39,6 +45,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 SEC_LINK = "https://www.sec.gov/edgar/searchedgar/companysearch.html"
+DOMAIN = "https://www.sec.gov"
 
 
 class HoldingsScraper:
@@ -77,7 +84,7 @@ class HoldingsScraper:
         soup = BeautifulSoup(self.browser.page_source, "html.parser")
         self.links.extend(soup('a', id='documentsbutton'))
         sys.stdout.write('13F filings found: %d\n' % len(self.links))
-        domain = 'https://www.sec.gov'
+        # Comment out try/except below to run most recent filing only
         # Check for more results and click next page
         try:
             next = self.browser.find_element_by_xpath("//input[@value='Next 40']")
@@ -86,42 +93,47 @@ class HoldingsScraper:
         except:
             # Otherwise loop through all filings found to get data
             for link in self.links:
-                url = domain + link.get('href', None)
+                url = DOMAIN + link.get('href', None)
                 self.parse_filing(url)
-        # Below is for most recent filing only
-        # url = domain + self.links[0].get('href', None)
+        # Uncomment below to run most recent filing only
+        # url = DOMAIN + self.links[0].get('href', None)
         # self.parse_filing(url)
 
     def parse_filing(self, url):
-        """Examines each filing to determine how to parse holdings data.
+        """Examines filing to determine how to parse holdings data.
         
-        Opens filing url, get filing and report end dates, and determine parsing
-        of holdings by either XML or ASCII based on 2013 filing format change.
+        Opens filing url, get filing and report end dates, and determine 
+        parsing by either XML or ASCII based on 2013 filing format change.
         """
         self.browser.get(url)
         soup = BeautifulSoup(self.browser.page_source, "html.parser")
+        
         filing_date_loc = soup.find("div", text="Filing Date")
         filing_date = filing_date_loc.findNext('div').text
+        
         period_of_report_loc = soup.find("div", text="Period of Report")
         period_of_report = period_of_report_loc.findNext('div').text
-        domain = 'https://www.sec.gov'
+        
         # Determine if xml file exists, if not look for ASCII text file
         try:
             xml = soup.find('td', text="2")
             xml_link = xml.findNext('a', text=re.compile("\.xml$"))
-            xml_file = domain + xml_link.get('href', None)
+            xml_file = DOMAIN + xml_link.get('href', None)
             sys.stdout.write('Getting holdings from: %s\n' % xml_file)
-            self.get_holdings_post(xml_file, filing_date, period_of_report)
+            self.get_holdings_xml(xml_file, filing_date, period_of_report)
         except:
             #sys.stdout.write('No xml link found for filing date: %s\n' % str(filing_date))
             submission = soup.find('td', text="Complete submission text file")
             subm_link = submission.findNext('a', text=re.compile("\.txt$"))
-            txt_file = domain + subm_link.get('href', None)
+            txt_file = DOMAIN + subm_link.get('href', None)
             sys.stdout.write('Getting holdings from (ascii): %s\n' % txt_file)
-            self.save_holdings_pre(txt_file, filing_date, period_of_report)
+            self.get_holdings_ascii(txt_file, filing_date, period_of_report)
 
-    def get_holdings_post(self, xml_file, date, period):
-        """Get holdings detail from xml file, format which was required 'post' 2013."""
+    def get_holdings_xml(self, xml_file, date, period):
+        """Get holdings detail from xml file and store data.
+
+        XML format which was required post-2013.
+        """
         self.browser.get(xml_file)
         soup = BeautifulSoup(self.browser.page_source, "xml")
         holdings = soup.find_all('infoTable')
@@ -178,10 +190,11 @@ class HoldingsScraper:
             except:
                 pass
             data.append(d)
+        
         col_headers = list(d.keys())
-        self.save_holdings_post(date, period, col_headers, data)
+        self.save_holdings_xml(date, period, col_headers, data)
 
-    def save_holdings_post(self, date, period, headers, data):
+    def save_holdings_xml(self, date, period, headers, data):
         """Create and write holdings data from XML to tab-delimited text file."""
         file_name = self.ticker + '_' + str(date) + '_filing_date.txt'
         with open(file_name, 'w', newline='') as f:
@@ -193,11 +206,16 @@ class HoldingsScraper:
             for row in data:
                 writer.writerow([row.get(k, 'n/a') for k in headers])
 
-    def save_holdings_pre(self, txt_file, date, period):
-        """Get and save holdings detail from ASCII text file, the format allowed 'pre' 2013."""
+    def get_holdings_ascii(self, txt_file, date, period):
+        """Get holdings detail from ASCII file and store data.
+
+        ASCII format was used pre-2013 decision to use XML. Read and find
+        holdings details from ASCII text files. Store data in 'temp_holdings.txt'
+        file for save_holdings_ascii().
+        """
         data = urllib.request.urlopen(txt_file)
         parse = False
-        file_name = self.ticker + '_' + str(date) + '_filing_dateASCII.txt'
+        file_name = 'temp_holdings.txt'
         with open(file_name, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['Ticker: ' + self.ticker])
@@ -212,7 +230,31 @@ class HoldingsScraper:
                     parse = False
                 if parse:
                     writer.writerow([line])
-    
+        self.save_holdings_ascii(file_name, date)
+
+    def save_holdings_ascii(self, data_file, date):
+        """Retrieves and reads 'temp_holdings.txt', then writes to tab-delimited file.
+
+        Parse holdings data in ASCII text format by splitting each line 
+        by looking for 2 or more whitespaces, stores each line in 'holdings', 
+        then writes to tab-delimited text file.
+        """
+        with open(data_file, 'r') as f:
+            holdings = []
+            for line in f:
+                line = line.strip()
+                columns = re.split(r'\s{2,}', line)
+                holdings.append(columns)
+
+        file_name = self.ticker + '_' + str(date) + '_filing_dateASCII.txt'
+        with open(file_name, 'w', newline='') as f:
+            writer = csv.writer(f, dialect='excel-tab')
+            for row in holdings:
+                writer.writerow([row[i] for i in range(len(row))])
+
+    def remove_temp_file(self):
+            os.remove('temp_holdings.txt')
+
     def scrape(self):
         """Main method to start scraper and find SEC holdings data."""
         self.find_filings()
