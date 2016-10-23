@@ -4,33 +4,13 @@
 scraper.py contains the main functionality to find and scrape
 holdings data from 13F filings on https://www.sec.gov.
 
-See comments in main.py for instructions on how to run
+See comments in README.md for instructions on how to run
 the scraper. 
-
-A .txt file will be created for every 13F filing found for the
-ticker and saved in the same directory as this program.
-
-All files are tab-delimited with below naming convention: 
-- for filings after change to XML required format:
-[ticker] + '_' + [filing date] + '_filing_date.txt'
-
-- for filings before change in 2013
-[ticker] + '_' + [filing date] + '_filing_dateASCII.txt'
-
-Holdings retrieval for filings after SEC 2013 decision to 
-discontinue text-based ASCII format is done via parsing of 
-XML from .xml link. Data is written to tab-delimited file.
-
-Holdings retrieval for filings before SEC 2013 decision to 
-discontinue text-based ASCII format is done via parsing of 
-.txt link to look for table of holdings and saving to 
-temporary file. Temporary file is read again to parse and 
-split each line for final tab-delimited text file.
 
 Note, the scraper will find all filings for a ticker and 
 generated a text file for each in the current directory. 
 To test on the most recent filing only, you can comment out 
-lines 97-105, and uncomment lines 107-108 in scraper.py
+lines 78-86, and uncomment lines 88-89 in scraper.py
 """
 
 import csv
