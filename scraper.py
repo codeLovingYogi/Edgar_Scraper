@@ -238,7 +238,7 @@ class HoldingsScraper:
     def save_holdings_ascii(self, file_name, report_headers, data):
         """Retrieves and reads 'temp_holdings.txt', then writes to tab-delimited file.
 
-        Parse holdings data in ASCII text format by splitting each line 
+        Parse holdings data in ASCII text format, splitting each line 
         by looking for 2 or more whitespaces, stores each line in 'holdings', 
         then writes to tab-delimited text file.
         """
